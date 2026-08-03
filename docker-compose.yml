@@ -1,0 +1,178 @@
+networks:
+  nutrialianza_net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  prometheus_data:
+  loki_data:
+  n8n_data:
+  grafana_data:
+  nginx_logs:
+  mysql_logs:
+
+services:
+
+  # ---------- SERVIDOR WEB ----------
+  nginx:
+    image: nginx:stable
+    container_name: nutrialianza-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/app
+    networks:
+      - nutrialianza_net
+
+  # ---------- BASE DE DATOS ----------
+  mysql:
+    image: mysql:8.0
+    container_name: nutrialianza-mysql
+    restart: unless-stopped
+    command: >
+      --slow_query_log=1
+      --slow_query_log_file=/var/log/mysql/slow.log
+      --long_query_time=2
+      --log-error=/var/log/mysql/error.log
+      --general_log=0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - mysql_logs:/var/log/mysql
+      - ./mysql/nutrialianza_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - nutrialianza_net
+
+  # ---------- MÉTRICAS DEL SISTEMA ----------
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: nutrialianza-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host/root'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - nutrialianza_net
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: nutrialianza-blackbox
+    restart: unless-stopped
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./prometheus/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+        - nutrialianza_net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nutrialianza-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - nutrialianza_net
+    depends_on:
+      - node-exporter
+
+  # ---------- LOGS ----------
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: nutrialianza-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    networks:
+      - nutrialianza_net
+
+  # Logstash recibe de Filebeat y reenvía a Loki (Loki no tiene salida nativa
+  # en Filebeat; el plugin oficial logstash-output-loki resuelve esto).
+  logstash:
+    build: ./logstash
+    container_name: nutrialianza-logstash
+    restart: unless-stopped
+    volumes:
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    networks:
+      - nutrialianza_net
+    depends_on:
+      - loki
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: nutrialianza-filebeat
+    user: root
+    restart: unless-stopped
+    command: ["--strict.perms=false", "-e"]
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - nginx_logs:/var/log/app:ro
+      - mysql_logs:/var/log/mysql:ro
+      - /var/log/auth.log:/var/log/host-auth.log:ro   # nivel avanzado (SSH)
+    networks:
+      - nutrialianza_net
+    depends_on:
+      - logstash
+
+  # ---------- AUTOMATIZACIÓN E IA ----------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: nutrialianza-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      GENERIC_TIMEZONE: "America/Costa_Rica"
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - nutrialianza_net
+    depends_on:
+      - prometheus
+      - loki
+
+  # ---------- VISUALIZACIÓN (NIVEL AVANZADO) ----------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nutrialianza-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - nutrialianza_net
+    depends_on:
+      - prometheus
+      - loki

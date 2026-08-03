@@ -1,0 +1,51 @@
+filebeat.inputs:
+  - type: filestream
+    id: nginx-access
+    paths:
+      - /var/log/app/access.log
+    fields:
+      service: nginx
+      log_type: access
+    fields_under_root: true
+
+  - type: filestream
+    id: nginx-error
+    paths:
+      - /var/log/app/error.log
+    fields:
+      service: nginx
+      log_type: error
+    fields_under_root: true
+
+  - type: filestream
+    id: mysql-slow
+    paths:
+      - /var/log/mysql/slow.log
+    fields:
+      service: mysql
+      log_type: slow_query
+    fields_under_root: true
+
+  - type: filestream
+    id: mysql-error
+    paths:
+      - /var/log/mysql/error.log
+    fields:
+      service: mysql
+      log_type: error
+    fields_under_root: true
+
+  # Nivel avanzado: intentos de fuerza bruta SSH (Tema 9 del silabo)
+  - type: filestream
+    id: auth-log
+    paths:
+      - /var/log/host-auth.log
+    fields:
+      service: auth
+      log_type: ssh
+    fields_under_root: true
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info
