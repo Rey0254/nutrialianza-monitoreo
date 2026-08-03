@@ -1,11 +1,10 @@
 # NutriAlianza S.A. — Sistema de Monitoreo Inteligente con Docker y IA
 
-**BCD 7212 — Redes de Computadoras | II Cuatrimestre 2026**
+**Redes de Computadoras | II Cuatrimestre 2026**
 
 Sistema de monitoreo de infraestructura para NutriAlianza S.A. (planta de nutrición animal), construido con contenedores Docker, que combina métricas de sistema (Prometheus), logs centralizados (Loki), automatización (N8N) y análisis inteligente de alertas mediante IA (Groq), con notificaciones en tiempo real a Telegram.
 
-**Integrantes:** [Nombre 1] — [Rol], [Nombre 2] — [Rol]
-**Nivel alcanzado:** Avanzado
+**Integrantes:** Reychell Segura Fernandez — Nicole Camacho Calvo
 
 ---
 
@@ -96,7 +95,7 @@ Adicional (a nivel de host, no contenedor): **fail2ban**, **UFW**, **vnstat**.
 ### 4.1 Clonar el repositorio dentro de la VM
 
 ```bash
-git clone <URL_DEL_REPOSITORIO> nutrialianza-monitoreo
+git clone https://github.com/Rey0254/nutrialianza-monitoreo nutrialianza-monitoreo
 cd nutrialianza-monitoreo
 ```
 
