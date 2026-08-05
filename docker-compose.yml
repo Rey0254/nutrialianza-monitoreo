@@ -176,3 +176,13 @@ services:
     depends_on:
       - prometheus
       - loki
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: nutrialianza-cloudflared
+    restart: unless-stopped
+    command: tunnel --url http://grafana:3000
+    networks:
+      - nutrialianza_net
+    depends_on:
+      - grafana

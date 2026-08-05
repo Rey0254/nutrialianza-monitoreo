@@ -1,0 +1,484 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            },
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -880,
+        -320
+      ],
+      "id": "e77e7af4-bb61-4add-9865-4ad99b2baec9",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+            },
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        480
+      ],
+      "id": "3bb5f7cd-e702-42dd-b6a5-0df57b65b540",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus:9090/api/v1/query?query=(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        304
+      ],
+      "id": "8f6a8861-ed42-4df6-8319-7102dd08eafa",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus:9090/api/v1/query?query=(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        112
+      ],
+      "id": "af2f21ab-5c41-4067-8dc1-03bb2f1b2827",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "sum(rate(node_network_receive_bytes_total{device!=\"lo\"}[5m])) * 8 / 1000000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        -48
+      ],
+      "id": "5ffb5b2d-2876-4d4f-9fdb-89b051fa2c1a",
+      "name": "HTTP Request3"
+    },
+    {
+      "parameters": {
+        "numberInputs": 8
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        336,
+        -384
+      ],
+      "id": "3fd8300f-a2a7-4e4b-baae-89eb8b52a4ec",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// El item 4 trae varias métricas probe_success juntas — buscamos la de nginx-web específicamente\nconst probes = items[4].json.data.result || [];\nconst webProbe = probes.find(p => p.metric.servicio === \"nginx-web\");\n\n// Los items 5,6,7 son conteos de Loki — si no hay resultado, es 0 eventos\nfunction countLoki(item) {\n  const r = item.json.data.result;\n  if (!r || r.length === 0) return 0;\n  return parseInt(r[0].value[1], 10);\n}\n\nreturn [{\n  json: {\n    ram: items[0].json.data.result[0]?.value[1] ?? null,\n    disco: items[1].json.data.result[0]?.value[1] ?? null,\n    red_mbps: items[2].json.data.result[0]?.value[1] ?? null,\n    cpu: items[3].json.data.result[0]?.value[1] ?? null,\n    web_up: webProbe ? webProbe.value[1] : \"0\",\n    nginx_errores_5min: countLoki(items[5]),\n    mysql_slow_queries_5min: countLoki(items[6]),\n    ssh_intentos_fallidos_5min: countLoki(items[7]),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -288
+      ],
+      "id": "b5d37e2b-d165-4157-b41d-6569c920d87b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{PEGAR_SU_GROQ_API_KEY_AQUI}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={\n  \"model\": \"llama-3.1-8b-instant\",\n  \"temperature\": 0.2,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Eres un ingeniero de soporte de TI para NutriAlianza S.A., una planta de nutrición animal. Vas a recibir métricas de servidor Y actividad de logs (errores web, consultas lentas de base de datos, intentos de acceso SSH). Tu trabajo es CORRELACIONAR ambas fuentes, no analizarlas por separado. Debes responder ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin backticks, siguiendo EXACTAMENTE este esquema: {\\\"severidad\\\": \\\"baja|media|critica\\\", \\\"resumen\\\": \\\"string\\\", \\\"causa_probable\\\": \\\"string\\\", \\\"recomendacion\\\": \\\"string\\\"}. Si varias señales apuntan al mismo problema (por ejemplo, alto CPU junto con muchos errores Nginx), explícalo como una sola causa raíz, no como eventos separados. Si no hay ninguna anomalía real, responde con severidad baja.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Métricas actuales del servidor NutriAlianza: CPU {{ $json.cpu }}%, RAM {{ $json.ram }}%, Disco {{ $json.disco }}%, Red {{ $json.red_mbps }} Mbps, Estado del servicio web (1=activo 0=caído): {{ $json.web_up }}. Actividad de logs en los últimos 5 minutos: {{ $json.nginx_errores_5min }} errores en Nginx, {{ $json.mysql_slow_queries_5min }} consultas lentas en MySQL, {{ $json.ssh_intentos_fallidos_5min }} intentos de contraseña SSH fallidos. Analiza correlacionando todas estas señales y da tu diagnóstico.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        752,
+        -288
+      ],
+      "id": "06e64bd4-3570-452b-80f0-822b26576024",
+      "name": "HTTP Request4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const respuesta = JSON.parse($input.first().json.choices[0].message.content);\n\nconst emojis = { baja: \"🟢\", media: \"🟡\", critica: \"🔴\" };\n\nconst texto = `${emojis[respuesta.severidad] || \"⚪\"} ALERTA ${respuesta.severidad.toUpperCase()} - NutriAlianza S.A.\n\nResumen: ${respuesta.resumen}\nCausa probable: ${respuesta.causa_probable}\nRecomendación: ${respuesta.recomendacion}`;\n\nreturn [{ json: { texto } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -288
+      ],
+      "id": "94fbacab-61b1-4054-a5f4-ab3b618cb0de",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "chatId": "8940141301",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        -288
+      ],
+      "id": "06e01285-86a3-4b50-98cc-2d6f2b9e2283",
+      "name": "Send a text message",
+      "webhookId": "5037523d-c16d-4ebc-8450-a3e8ac02b497",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOH6OSwifYdlHDrj",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "probe_success"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        -224
+      ],
+      "id": "94a99f96-6a4d-4b84-bea3-46479aba8d66",
+      "name": "HTTP Request5"
+    },
+    {
+      "parameters": {
+        "url": "http://loki:3100/loki/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "count_over_time({service=\"nginx\", log_type=\"error\"}[5m])"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        -416
+      ],
+      "id": "1d761c8d-ac95-42c3-bd74-f8c1f854a987",
+      "name": "HTTP Request6"
+    },
+    {
+      "parameters": {
+        "url": "http://loki:3100/loki/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "count_over_time({service=\"mysql\", log_type=\"slow_query\"}[5m])"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -128,
+        -592
+      ],
+      "id": "b60839ff-a158-4a6e-9827-d71d1a773fc5",
+      "name": "HTTP Request7"
+    },
+    {
+      "parameters": {
+        "url": "http://loki:3100/loki/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "count_over_time({service=\"auth\"} |= \"Failed password\" [5m])"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -128,
+        -784
+      ],
+      "id": "0c37f748-7583-466b-bdbb-00920d2726cf",
+      "name": "HTTP Request8"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request5",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request6",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request7",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request5": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "HTTP Request6": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "HTTP Request7": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "HTTP Request8": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 7
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5337d594-b99e-44b8-b82f-0c60216c6eaa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1b3407d84b05264d0369555de706034be0a304d6d1ef949417df373c65bc461b"
+  },
+  "nodeGroups": [],
+  "id": "zxbtfgvJvfF18vhl",
+  "tags": []
+}
