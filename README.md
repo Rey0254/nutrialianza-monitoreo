@@ -194,7 +194,7 @@ Si se accede desde fuera de la VM (por ejemplo, el profesor evaluando en su prop
 Cada 5 minutos, el workflow de N8N:
 1. Consulta a Prometheus: CPU, RAM, disco, ancho de banda y estado del health check web (`probe_success`).
 2. Combina las 5 métricas en un solo objeto JSON.
-3. Envía el contexto a la API de Groq (modelo `llama-3.1-8b-instant`), pidiendo un análisis estructurado (`severidad`, `resumen`, `causa_probable`, `recomendacion`) en formato JSON forzado.
+3. Envía el contexto a la API de Groq (modelo `openai/gpt-oss-20b`), pidiendo un análisis estructurado (`severidad`, `resumen`, `causa_probable`, `recomendacion`) en formato JSON forzado.
 4. Formatea la respuesta y la envía por Telegram al chat configurado.
 
 El prompt completo usado se documenta en `n8n/prompt_groq.md`.
